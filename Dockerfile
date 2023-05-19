@@ -1,6 +1,18 @@
-FROM python:3.10-alpine
-
+FROM python:3.10-alpine as base
 WORKDIR     /app
+
+FROM base as builder
+
+RUN apk add --update --no-cache \
+        alpine-sdk \
+        libffi-dev \
+        musl-dev \
+        openssl-dev
+
+COPY . /app/
+RUN make poetry-install build export
+
+FROM base
 
 # Only install dependencies
 RUN  apk --no-cache add \
@@ -14,7 +26,9 @@ RUN  apk --no-cache add \
         libffi \
         openssl
 
-ADD dist/git_cdn-*.whl requirements.txt /app/
+COPY --from=builder /app/requirements.txt /app/requirements.txt
+COPY --from=builder /app/dist /app/
+
 RUN apk add --update --no-cache --virtual \
         .build-deps \
         alpine-sdk \
