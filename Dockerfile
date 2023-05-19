@@ -27,6 +27,7 @@ RUN apk add --update --no-cache --virtual \
 
 # Configure git for git-cdn
 RUN git config --global pack.threads 4  &&\
+    git config --global http.postBuffer 524288000 && \
     # Allow git clone/fetch --filter
     git config --global uploadpack.allowfilter true
 
