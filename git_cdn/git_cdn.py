@@ -28,6 +28,7 @@ from git_cdn.lfs_cache_manager import LFSCacheManager
 from git_cdn.log import bind_context_from_exp
 from git_cdn.log import enable_console_logs
 from git_cdn.log import enable_udp_logs
+from git_cdn.repo_cache import RepoCache
 from git_cdn.upload_pack import UploadPackHandler
 from git_cdn.upload_pack_input_parser import UploadPackInputParser
 from git_cdn.upload_pack_input_parser_v2 import UploadPackInputParserV2
@@ -167,6 +168,9 @@ class GitCDN:
         self.router = router
         self.upstream = self.app.upstream = upstream
         self.router.add_get("/", self.handle_liveness)
+        self.router.add_get(
+            "/__api__/last_active_branches", self.handle_api_last_active_branches
+        )
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None
@@ -398,6 +402,22 @@ class GitCDN:
 
     async def handle_liveness(self, _):
         return web.Response(text="live")
+
+    async def handle_api_last_active_branches(self, request):
+        auth = request.headers["Authorization"]
+        creds = get_url_creds_from_auth(auth)
+        rcache = RepoCache(request.query["repo"], creds, self.upstream)
+        if not rcache.exists():
+            return web.Response(text="not found", status=404)
+        p = await asyncio.create_subprocess_exec(
+            "sh",
+            "-c",
+            f"git --git-dir ${rcache.directory} for-each-ref --sort=-committerdate refs/remotes/origin/heads | head -n 10",
+            stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        cmd_stdout, cmd_stderr = await p.communicate()
+        return web.Response(text=cmd_stdout.decode())
 
     async def handle_upload_pack(self, request, path, protocol_version):
         """Second part of the git+http protocol. (fetch)
