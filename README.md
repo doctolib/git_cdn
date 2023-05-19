@@ -1,3 +1,5 @@
+# WARNING: fork from https://gitlab.com/grouperenault/git_cdn
+
 # git-cdn
 
 a CDN for git
