@@ -171,6 +171,9 @@ class GitCDN:
         self.router.add_get(
             "/__api__/last_active_branches", self.handle_api_last_active_branches
         )
+        self.router.add_get(
+            "/__api__/merge_base", self.handle_api_merge_base
+        )
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None
@@ -413,6 +416,25 @@ class GitCDN:
             "sh",
             "-c",
             f"git --git-dir ${rcache.directory} for-each-ref --sort=-committerdate refs/remotes/origin/heads | head -n 10",
+            stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        cmd_stdout, cmd_stderr = await p.communicate()
+        return web.Response(text=cmd_stdout.decode())
+
+    async def handle_api_merge_base(self, request):
+        auth = request.headers["Authorization"]
+        creds = get_url_creds_from_auth(auth)
+        rcache = RepoCache(request.query["repo"], creds, self.upstream)
+        if not rcache.exists():
+            return web.Response(text="not found", status=404)
+        p = await asyncio.create_subprocess_exec(
+            "git",
+            "--git-dir",
+            rcache.directory,
+            "merge-base",
+            f"refs/remotes/origin/heads/{request.query['base']}",
+            f"refs/remotes/origin/heads/{request.query['current']}",
             stderr=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
         )
