@@ -115,7 +115,7 @@ class RepoCache:
                 "--tags",
                 self.url,
                 "+refs/*:refs/remotes/origin/*",
-                "^refs/pull/*"
+                "^refs/pull/*",
             )
             if returncode == 0:
                 break

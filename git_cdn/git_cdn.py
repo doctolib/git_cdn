@@ -28,6 +28,7 @@ from git_cdn.lfs_cache_manager import LFSCacheManager
 from git_cdn.log import bind_context_from_exp
 from git_cdn.log import enable_console_logs
 from git_cdn.log import enable_udp_logs
+from git_cdn.auth_cache import AuthCache
 from git_cdn.repo_cache import RepoCache
 from git_cdn.upload_pack import UploadPackHandler
 from git_cdn.upload_pack_input_parser import UploadPackInputParser
@@ -171,9 +172,8 @@ class GitCDN:
         self.router.add_get(
             "/__api__/last_active_branches", self.handle_api_last_active_branches
         )
-        self.router.add_get(
-            "/__api__/merge_base", self.handle_api_merge_base
-        )
+        self.router.add_get("/__api__/merge_base", self.handle_api_merge_base)
+        self.auth_cache = AuthCache()
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None
@@ -441,6 +441,29 @@ class GitCDN:
         cmd_stdout, cmd_stderr = await p.communicate()
         return web.Response(text=cmd_stdout.decode())
 
+    async def auth_request(self, request, path):
+        auth = request.headers["Authorization"]
+        if self.auth_cache.auth_ok(auth, path):
+            return True
+        # proxy another info/refs request to the upstream server
+        # (forwarding the BasicAuth as well) to check repo existence and credentials
+        # previously we used a '/HEAD' request, but gitlab do not support it anymore.
+        upstream_url = self.upstream + path + "/info/refs?service=git-upload-pack"
+        headers = {"Authorization": auth}
+        async with ClientSessionWithRetry(
+            self.get_session,
+            range(500, 600),
+            "get",
+            upstream_url,
+            headers=headers,
+            allow_redirects=False,
+        ) as response:
+            await response.content.read()
+            result = response.status == 200
+            if result:
+                self.auth_cache.store_auth_ok(auth, path)
+            return result
+
     async def handle_upload_pack(self, request, path, protocol_version):
         """Second part of the git+http protocol. (fetch)
         This part creates the git-pack bundle fully locally if possible.
@@ -468,26 +491,12 @@ class GitCDN:
         bind_contextvars(upload_pack_status="direct", canceled=False)
         response = None
         try:
-            # proxy another info/refs request to the upstream server
-            # (forwarding the BasicAuth as well) to check repo existence and credentials
-            # previously we used a '/HEAD' request, but gitlab do not support it anymore.
-            upstream_url = self.upstream + path + "/info/refs?service=git-upload-pack"
-            auth = request.headers["Authorization"]
-            headers = {"Authorization": auth}
-            async with ClientSessionWithRetry(
-                self.get_session,
-                range(500, 600),
-                "get",
-                upstream_url,
-                headers=headers,
-                allow_redirects=False,
-            ) as response:
-                await response.content.read()
-                if response.status != 200:
-                    return web.Response(text=response.reason, status=response.status)
+            auth_ok = await self.auth_request(request, path)
+            if not auth_ok:
+                return web.Response(text=response.reason, status=response.status)
 
             # read the upload-pack input from http response
-            creds = get_url_creds_from_auth(auth)
+            creds = get_url_creds_from_auth(request.headers["Authorization"])
 
             # start a streaming the response to the client
             response = web.StreamResponse(
