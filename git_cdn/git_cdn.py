@@ -173,6 +173,8 @@ class GitCDN:
             "/__api__/last_active_branches", self.handle_api_last_active_branches
         )
         self.router.add_get("/__api__/merge_base", self.handle_api_merge_base)
+        self.router.add_get("/__api__/diff", self.handle_api_diff)
+        self.router.add_get("/__api__/diff_no_renames", self.handle_api_diff_no_renames)
         self.auth_cache = AuthCache()
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
@@ -407,11 +409,13 @@ class GitCDN:
         return web.Response(text="live")
 
     async def handle_api_last_active_branches(self, request):
+        auth_response = await self.auth_request(request, request.query["repo"])
+        if auth_response is not None:
+            return web.Response(text=auth_response.reason, status=auth_response.status)
+
         auth = request.headers["Authorization"]
         creds = get_url_creds_from_auth(auth)
         rcache = RepoCache(request.query["repo"], creds, self.upstream)
-        if not rcache.exists():
-            return web.Response(text="not found", status=404)
         p = await asyncio.create_subprocess_exec(
             "sh",
             "-c",
@@ -423,28 +427,61 @@ class GitCDN:
         return web.Response(text=cmd_stdout.decode())
 
     async def handle_api_merge_base(self, request):
+        auth_response = await self.auth_request(request, request.query["repo"])
+        if auth_response is not None:
+            return web.Response(text=auth_response.reason, status=auth_response.status)
         auth = request.headers["Authorization"]
         creds = get_url_creds_from_auth(auth)
         rcache = RepoCache(request.query["repo"], creds, self.upstream)
-        if not rcache.exists():
-            return web.Response(text="not found", status=404)
-        p = await asyncio.create_subprocess_exec(
-            "git",
-            "--git-dir",
-            rcache.directory,
+        cmd_stdout = await rcache.execute_git_command(
+            [request.query['current_sha1'].encode('ascii')],
             "merge-base",
             f"refs/remotes/origin/heads/{request.query['base']}",
-            f"refs/remotes/origin/heads/{request.query['current']}",
-            stderr=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
+            request.query['current_sha1'],
         )
-        cmd_stdout, cmd_stderr = await p.communicate()
+        return web.Response(text=cmd_stdout.decode())
+
+    async def handle_api_diff(self, request):
+        auth_response = await self.auth_request(request, request.query["repo"])
+        if auth_response is not None:
+            return web.Response(text=auth_response.reason, status=auth_response.status)
+        auth = request.headers["Authorization"]
+        creds = get_url_creds_from_auth(auth)
+        rcache = RepoCache(request.query["repo"], creds, self.upstream)
+        cmd_stdout = await rcache.execute_git_command(
+            [
+                request.query['base_sha1'].encode('ascii'),
+                request.query['current_sha1'].encode('ascii')
+            ],
+            "diff",
+            "--text",
+            f"{request.query['base_sha1']}..{request.query['current_sha1']}",
+        )
+        return web.Response(text=cmd_stdout.decode())
+
+    async def handle_api_diff_no_renames(self, request):
+        auth_response = await self.auth_request(request, request.query["repo"])
+        if auth_response is not None:
+            return web.Response(text=auth_response.reason, status=auth_response.status)
+        auth = request.headers["Authorization"]
+        creds = get_url_creds_from_auth(auth)
+        rcache = RepoCache(request.query["repo"], creds, self.upstream)
+        cmd_stdout = await rcache.execute_git_command(
+            [
+                request.query['base_sha1'].encode('ascii'),
+                request.query['current_sha1'].encode('ascii')
+            ],
+            "diff",
+            "--text",
+            "--no-renames",
+            f"{request.query['base_sha1']}..{request.query['current_sha1']}",
+        )
         return web.Response(text=cmd_stdout.decode())
 
     async def auth_request(self, request, path):
         auth = request.headers["Authorization"]
         if self.auth_cache.auth_ok(auth, path):
-            return True
+            return None
         # proxy another info/refs request to the upstream server
         # (forwarding the BasicAuth as well) to check repo existence and credentials
         # previously we used a '/HEAD' request, but gitlab do not support it anymore.
@@ -459,10 +496,10 @@ class GitCDN:
             allow_redirects=False,
         ) as response:
             await response.content.read()
-            result = response.status == 200
-            if result:
+            if response.status == 200:
                 self.auth_cache.store_auth_ok(auth, path)
-            return result
+                return None
+            return response
 
     async def handle_upload_pack(self, request, path, protocol_version):
         """Second part of the git+http protocol. (fetch)
@@ -491,9 +528,9 @@ class GitCDN:
         bind_contextvars(upload_pack_status="direct", canceled=False)
         response = None
         try:
-            auth_ok = await self.auth_request(request, path)
-            if not auth_ok:
-                return web.Response(text=response.reason, status=response.status)
+            auth_response = await self.auth_request(request, path)
+            if auth_response is not None:
+                return web.Response(text=auth_response.reason, status=auth_response.status)
 
             # read the upload-pack input from http response
             creds = get_url_creds_from_auth(request.headers["Authorization"])

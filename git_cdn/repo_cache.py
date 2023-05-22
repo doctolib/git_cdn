@@ -194,3 +194,44 @@ class RepoCache:
                 # else, someone took the write_lock before us and so the rcache
                 # has been updated already, we do not need to do it
                 await self.fetch()
+
+    async def ensure_input_wants(self, wants):
+        """Checks if all 'wants'
+        and updates rcache if that is not the case
+        """
+        if not self.exists():
+            log.debug("rcache noexistent, cloning")
+            await self.update()
+        else:
+            not_our_refs = True
+            async with self.read_lock():
+                not_our_refs = await self._missing_want(wants)
+
+            if not_our_refs:
+                log.debug("not our refs, fetching")
+                await self.update()
+
+    async def _missing_want(self, wants):
+        """Return True if at least one sha1 in 'wants' is missing in self.rcache"""
+        try:
+            stdout = await self.cat_file(wants)
+        except FileNotFoundError:
+            # Exception while doing git cat command
+            # Is rcache really valid ?
+            # By returning True, we will ask for an update
+            return True
+
+        return b"missing" in stdout
+
+    async def execute_git_command(self, required_sha1s, *args):
+        await self.ensure_input_wants(required_sha1s)
+        p = await asyncio.create_subprocess_exec(
+            "git",
+            "--git-dir",
+            self.directory,
+            *args,
+            stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        cmd_stdout, _ = await p.communicate()
+        return cmd_stdout

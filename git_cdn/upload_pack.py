@@ -171,33 +171,11 @@ class UploadPackHandler:
                             upload_pack_duration=time() - start_upload_pack
                         )
 
-    async def _missing_want(self, wants):
-        """Return True if at least one sha1 in 'wants' is missing in self.rcache"""
-        try:
-            stdout = await self.rcache.cat_file(wants)
-        except FileNotFoundError:
-            # Exception while doing git cat command
-            # Is rcache really valid ?
-            # By returning True, we will ask for an update
-            return True
-
-        return b"missing" in stdout
-
     async def _ensure_input_wants_in_rcache(self, wants):
         """Checks if all 'wants' are in rcache
         and updates rcache if that is not the case
         """
-        if not self.rcache.exists():
-            log.debug("rcache noexistent, cloning")
-            await self.rcache.update()
-        else:
-            not_our_refs = True
-            async with self.rcache.read_lock():
-                not_our_refs = await self._missing_want(wants)
-
-            if not_our_refs:
-                log.debug("not our refs, fetching")
-                await self.rcache.update()
+        await self.rcache.ensure_input_wants(wants)
 
     async def _execute(self, parsed_input):
         """Runs git upload-pack
