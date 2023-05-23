@@ -424,7 +424,7 @@ class GitCDN:
             stdout=asyncio.subprocess.PIPE,
         )
         cmd_stdout, cmd_stderr = await p.communicate()
-        return web.Response(text=cmd_stdout.decode())
+        return web.Response(body=cmd_stdout)
 
     async def handle_api_merge_base(self, request):
         auth_response = await self.auth_request(request, request.query["repo"])
@@ -439,7 +439,7 @@ class GitCDN:
             f"refs/remotes/origin/heads/{request.query['base']}",
             request.query['current_sha1'],
         )
-        return web.Response(text=cmd_stdout.decode())
+        return web.Response(body=cmd_stdout)
 
     async def handle_api_diff(self, request):
         auth_response = await self.auth_request(request, request.query["repo"])
@@ -457,7 +457,7 @@ class GitCDN:
             "--text",
             f"{request.query['base_sha1']}..{request.query['current_sha1']}",
         )
-        return web.Response(text=cmd_stdout.decode())
+        return web.Response(body=cmd_stdout)
 
     async def handle_api_diff_no_renames(self, request):
         auth_response = await self.auth_request(request, request.query["repo"])
@@ -476,7 +476,7 @@ class GitCDN:
             "--no-renames",
             f"{request.query['base_sha1']}..{request.query['current_sha1']}",
         )
-        return web.Response(text=cmd_stdout.decode())
+        return web.Response(body=cmd_stdout)
 
     async def auth_request(self, request, path):
         auth = request.headers["Authorization"]
