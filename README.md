@@ -1,4 +1,4 @@
-# WARNING: fork from https://gitlab.com/grouperenault/git_cdn
+# WARNING: this is a fork from https://gitlab.com/grouperenault/git_cdn
 
 # git-cdn
 
@@ -23,6 +23,25 @@ git-cdn is super easy to setup:
 1) Deploy one 90MB container on a powerful machine.
 2) Create an nginx frontend for load balancing and SSL termination.
 
+## Compatibility with Github.com
+
+git-cdn is compatible with [github.com](https:://github.com) and [actions/checkout](https://github.com/actions/checkout). So it can be used to with self hosted Github Actions workers to:
+* Have faster checkout
+* Reduce bandwith costs
+
+Use `GITSERVER_UPSTREAM=https://github.com`.
+
+Just do this
+
+```
+- uses: actions/checkout@v3
+  with:
+    ref: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
+    github-server-url: http://git-cdn:8000
+```
+
+The `ref` is required, because by default Github checkout a branch like `refs/pull/9999/head`. These ref are blacklisted inside git-cdn, because they can be really numerous (more than 100k @ doctolib), so the fetch are too slow.
+
 ## Technical features
 
 - Fully stateless for horizontal scalability
@@ -44,7 +63,9 @@ git-cdn is super easy to setup:
 
 - Tested with Gitlab, but should work with any BasicAuth git+http(s) server.
 
-- Production ready. Already served peta bytes of git data for Renault SW Labs CI.
+- Production ready. Already served peta bytes of git data for Renault SW Labs CI and Doctolib.
+
+- Auth cache. Authentication creads can be cached for `AUTH_CACHE_TTL` seconds.
 
 ## QuickStart
 
@@ -151,6 +172,9 @@ GIT_SSL_NO_VERIFY=          # can be used for staging infra when self signed SSL
 
 # protection from git hangs
 GIT_PROCESS_WAIT_TIMEOUT=2  # time to wait before killing git process (after sending sigterm)
+
+# Authentication cache
+AUTH_CACHE_TTL=0            # Time to live of entries in authentication cache. Deactivated by default.
 ```
 
 # How it works
