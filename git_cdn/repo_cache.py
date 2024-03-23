@@ -16,7 +16,7 @@ from git_cdn.util import ensure_proc_terminated
 from git_cdn.util import generate_url
 from git_cdn.util import get_bundle_paths
 from git_cdn.util import get_subdir
-from git_cdn.util import remove_git_credentials 
+from git_cdn.util import remove_git_credentials
 
 log = getLogger()
 BACKOFF_START = float(os.getenv("BACKOFF_START", "0.5"))
