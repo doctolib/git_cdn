@@ -16,6 +16,7 @@ from git_cdn.util import ensure_proc_terminated
 from git_cdn.util import generate_url
 from git_cdn.util import get_bundle_paths
 from git_cdn.util import get_subdir
+from git_cdn.util import remove_git_credentials 
 
 log = getLogger()
 BACKOFF_START = float(os.getenv("BACKOFF_START", "0.5"))
@@ -63,8 +64,8 @@ class RepoCache:
         return stdout, stderr, returncode  via deferred
         """
         t1 = time.time()
-
-        log.debug("git_cmd start", cmd=args)
+        args_without_pii = remove_git_credentials(args)
+        log.debug("git_cmd start", cmd=remove_git_credentials(args_without_pii))
         stdout_data = b""
         stderr_data = b""
         try:
@@ -93,7 +94,7 @@ class RepoCache:
 
             log.debug(
                 "git_cmd done",
-                cmd=args,
+                cmd=args_without_pii,
                 stdout_data=stdout_data.decode(errors="replace")[:128],
                 stderr_data=stderr_data.decode(errors="replace")[:128],
                 rc=git_proc.returncode,
