@@ -65,7 +65,7 @@ class RepoCache:
         """
         t1 = time.time()
         args_without_pii = remove_git_credentials(args)
-        log.debug("git_cmd start", cmd=remove_git_credentials(args_without_pii))
+        log.debug("git_cmd start", cmd=args_without_pii)
         stdout_data = b""
         stderr_data = b""
         try:
