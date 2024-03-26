@@ -167,3 +167,18 @@ def object_module_name(o):
         fn = o.__module__ + "."
     fn += o.__class__.__name__
     return fn
+
+
+def remove_git_credentials(args):
+    args_without_credentials = []
+    for e in args:
+        if re.match(
+            r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?",
+            str(e),
+        ):
+            args_without_credentials.append(
+                re.sub("(?<=:)([^@:]+)(?=@[^@]+$)", "*****", str(e))
+            )
+        else:
+            args_without_credentials.append(str(e))
+    return args_without_credentials
