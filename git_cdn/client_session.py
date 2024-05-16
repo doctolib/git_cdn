@@ -5,6 +5,7 @@ import time
 import aiohttp
 from structlog import getLogger
 
+from git_cdn.metrics import metric_upstream_responses_total
 from git_cdn.util import backoff
 
 log = getLogger()
@@ -32,6 +33,7 @@ class ClientSessionWithRetry:
                 self.cm_request = await self.session.request(
                     self.method, self.url, *self.args, **self.kwargs
                 )
+                metric_upstream_responses_total.inc()
 
                 if self.cm_request.status not in self.status_retry_on:
                     return self.cm_request

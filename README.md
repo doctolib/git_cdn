@@ -149,6 +149,10 @@ GIT_SSL_NO_VERIFY=          # can be used for staging infra when self signed SSL
 
 # protection from git hangs
 GIT_PROCESS_WAIT_TIMEOUT=2  # time to wait before killing git process (after sending sigterm)
+
+# metrics config
+PROMETHEUS_ENABLED=true     # if set, prometheus metrics will be served at /metrics
+PROMETHEUS_MULTIPROC_DIR=   # shared directory where prometheus metrics should be stored across multiple worker processes.
 ```
 
 # How it works
@@ -250,6 +254,35 @@ In order to enable structure logging you need to configure a server, listening f
 
 [Vector](https://vector.dev) using udp source, and json transform is easy to setup. It will process and filter those logs, and
 support many "sinks" to store your logs.
+
+# Prometheus metrics
+
+If enabled, Prometheus-style metrics are exposed at the standard `/metrics` top-level path on the default port (by default 8000).
+
+Metric exporting can be turned on by setting the `PROMETHEUS_ENABLED` environment variable, as described in the Configuration section above. Metrics are enabled by default when running the registry.gitlab.com/grouperenault/git_cdn container image.
+
+The following metrics are provided:
+
+| Name | [Type](https://prometheus.io/docs/concepts/metric_types/) | Description |
+| --- | --- | --- |
+| `git_cdn_workdir_filesystem_avail_bytes` | Gauge | Current free space available on the filesystem where `WORKING_DIRECTORY` resides, in bytes |
+| `git_cdn_workdir_filesystem_size_bytes` | Gauge | Total size of the filesystem where `WORKING_DIRECTORY` resides, in bytes |
+| `git_cdn_requests_total` | Counter | Total number of HTTP requests served since server start |
+| `git_cdn_response_status_total` | Counter | Total number of requests served since server start, labeled by response status code |
+| `git_cdn_upstream_responses_total` | Counter | Total number of requests delegated to the upstream without caching since server start. Includes non-cacheable requests and cache misses. |
+| `git_cdn_pack_sent_bytes_total` | Counter | Total data served directly from the pack cache since server start, in bytes |
+| `git_cdn_pack_cache_used_bytes` | Gauge | Total amount of disk space used by files currently in the pack cache, in bytes |
+| `git_cdn_request_time_seconds`| Summary | Summary of time spent serving responses to all requests, in seconds |
+| `git_cdn_total_bytes_sent` | Counter | Total data served across all requests since server start, in bytes |
+| `git_cdn_cache_hit_bytes_sent` | Summary | Summary of total data served from the pack cache, in bytes |
+| `git_cdn_cache_miss_bytes_sent` | Summary | Summary of total data served that was not found in the pack cache, in bytes |
+| `git_cdn_nocache_bytes_sent` | Summary | Summary of total data served across all requests other than cacheable /git-upload-pack requests, in bytes |
+| `git_cdn_stats_write_seconds` | Summary | Summary of time spent writing metrics, in seconds |
+| `git_cdn_pack_cache_evicted_bytes` | Summary of pack cache evictions, in bytes |
+| `git_cdn_repo_cache_received_bytes` | Summary of total data received from the upstream to populate the repo cache, in bytes |
+
+When running git_cdn with gunicorn or any other multi-process Python webserver driver, the `PROMETHEUS_MULTIPROC_DIR` environment variable must be set to a valid directory. Metrics are communicated between separate workers using this filesystem, allowing for consistent metric reporting across multiple worker threads. The contents of this directory will be removed whenever the git_cdn server is started.
+
 
 # Setup for development:
 
