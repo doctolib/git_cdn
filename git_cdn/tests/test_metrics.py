@@ -9,13 +9,13 @@ import pytest
 from aiohttp.helpers import BasicAuth
 from prometheus_client import REGISTRY
 
+from git_cdn import app as git_cdn_app
 from git_cdn.conftest import CREDS
-from git_cdn.conftest import MANIFEST_PATH
 from git_cdn.conftest import GITSERVER_UPSTREAM
+from git_cdn.conftest import MANIFEST_PATH
 from git_cdn.pack_cache import PackCache
 from git_cdn.pack_cache import PackCacheCleaner
 from git_cdn.tests.test_pack_cache import cache_pack
-from git_cdn import app as git_cdn_app
 
 
 def get_metric(
