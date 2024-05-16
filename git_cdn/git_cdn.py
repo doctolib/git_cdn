@@ -480,6 +480,9 @@ class GitCDN:
                 protocol_version=protocol_version,
             )
             await proc.run(parsed_content)
+            response.headers["X-GitCDN-Cache-Status"] = (
+                "HIT" if (proc.pcache_hit or proc.rcache_hit) else "MISS"
+            )
         except Exception:
             bind_contextvars(upload_pack_status="exception")
             raise
