@@ -11,9 +11,11 @@ from prometheus_client import REGISTRY
 
 from git_cdn.conftest import CREDS
 from git_cdn.conftest import MANIFEST_PATH
+from git_cdn.conftest import GITSERVER_UPSTREAM
 from git_cdn.pack_cache import PackCache
 from git_cdn.pack_cache import PackCacheCleaner
 from git_cdn.tests.test_pack_cache import cache_pack
+from git_cdn import app as git_cdn_app
 
 
 def get_metric(
@@ -133,9 +135,11 @@ def get_current_metrics():
 
 
 @pytest.mark.asyncio
-async def test_upstream_redirect(make_client, cdn_event_loop, app):
+async def test_upstream_redirect(make_client, cdn_event_loop):
     assert cdn_event_loop
-    app = app()
+    os.environ["PROMETHEUS_ENABLED"] = "true"
+    # Use make_app() directly instead of fixture here so we can set PROMETHEUS_ENABLED first
+    app = git_cdn_app.make_app(GITSERVER_UPSTREAM)
     client = await make_client(app)
     start_metrics = get_current_metrics()
 
@@ -199,11 +203,11 @@ async def test_pack_cache_clean_metrics(tmpworkdir, cdn_event_loop):
 
 
 @pytest.mark.asyncio
-async def test_local_clone_metrics(
-    make_client, cdn_event_loop, tmpdir, app, header_for_git
-):
+async def test_local_clone_metrics(make_client, cdn_event_loop, tmpdir, header_for_git):
     assert cdn_event_loop
-    app = app()
+    os.environ["PROMETHEUS_ENABLED"] = "true"
+    # Use make_app() directly instead of fixture here so we can set PROMETHEUS_ENABLED first
+    app = git_cdn_app.make_app(GITSERVER_UPSTREAM)
     client = await make_client(app)
 
     start_metrics = get_current_metrics()
@@ -291,12 +295,44 @@ async def test_local_clone_metrics(
 
 
 @pytest.mark.asyncio
-async def test_get_metrics_route(make_client, cdn_event_loop, app):
+async def test_get_metrics_route(make_client, cdn_event_loop):
     assert cdn_event_loop
+    os.environ["PROMETHEUS_ENABLED"] = "true"
+    # Use make_app() directly instead of fixture here so we can set PROMETHEUS_ENABLED first
+    app = git_cdn_app.make_app(GITSERVER_UPSTREAM)
     client = await make_client(app)
     resp = await client.get("/metrics", auth=BasicAuth(*CREDS.split(":")))
     assert resp.status == 200
+    assert resp.content_type == "text/plain"
     resp_body = await resp.text()
     assert "# HELP git_cdn_requests_total total requests served" in resp_body
     assert "# TYPE git_cdn_pack_cache_used_bytes gauge" in resp_body
     assert re.search(r"git_cdn_upstream_responses_total (\d+.\d+)", resp_body)
+
+
+@pytest.mark.asyncio
+async def test_prometheus_enabled_set_to_false(make_client, cdn_event_loop):
+    assert cdn_event_loop
+    os.environ["PROMETHEUS_ENABLED"] = "false"
+    # Use make_app() directly instead of fixture here so we can set PROMETHEUS_ENABLED first
+    app = git_cdn_app.make_app(GITSERVER_UPSTREAM)
+    client = await make_client(app)
+    resp = await client.get("/metrics", auth=BasicAuth(*CREDS.split(":")))
+    # No return code test; gitlab responds with a 403 but github responds with an organization
+    resp_body = await resp.text()
+    assert "# HELP git_cdn_requests_total total requests served" not in resp_body
+
+
+@pytest.mark.asyncio
+async def test_openmetrics_format(make_client, cdn_event_loop):
+    assert cdn_event_loop
+    os.environ["PROMETHEUS_ENABLED"] = "true"
+    app = git_cdn_app.make_app(GITSERVER_UPSTREAM)
+    client = await make_client(app)
+    resp = await client.get(
+        "/metrics",
+        auth=BasicAuth(*CREDS.split(":")),
+        headers={"Accept": "application/openmetrics-text"},
+    )
+    assert resp.status == 200
+    assert resp.content_type == "application/openmetrics-text"

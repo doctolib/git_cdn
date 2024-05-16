@@ -18,7 +18,6 @@ GITLAB_REPO_TEST_GROUP = os.getenv("GITLAB_REPO_TEST_GROUP", "grouperenault/repo
 GITSERVER_UPSTREAM = os.getenv("GITSERVER_UPSTREAM", "https://gitlab.com/")
 MANIFEST_PATH = f"{GITLAB_REPO_TEST_GROUP}/test_git_cdn.git"
 CREDS = os.getenv("CREDS", "gitlab-ci-token:{}".format(os.getenv("CI_JOB_TOKEN")))
-os.environ["PROMETHEUS_ENABLED"] = "true"
 # For consistency, pytest should not share prometheus metrics across processes
 if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
     del os.environ["PROMETHEUS_MULTIPROC_DIR"]

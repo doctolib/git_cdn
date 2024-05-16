@@ -179,9 +179,7 @@ class GitCDN:
         self.router = router
         self.upstream = self.app.upstream = upstream
         self.router.add_get("/", self.handle_liveness)
-        if os.getenv("PROMETHEUS_ENABLED"):
-            setup_metrics_routes(self.router)
-            self.prometheus_enabled = True
+        setup_metrics_routes(self.router)
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None

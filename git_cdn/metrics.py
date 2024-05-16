@@ -121,7 +121,8 @@ def choose_generator(accept_header: str) -> tuple[Callable, str]:
 
 async def serve_metrics(request: web.Request) -> web.Response:
     # Ref: https://prometheus.github.io/client_python/multiprocess/
-    if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+    # no coverage, (tests run with single-threaded collector)
+    if "PROMETHEUS_MULTIPROC_DIR" in os.environ:  # pragma: no cover
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)
     else:
@@ -151,4 +152,8 @@ def setup_metrics_routes(router: AbstractRouter):
             prometheus_enabled=prometheus_enabled,
         )
         return
+    log.info(
+        "Prometheus metrics being served at /metrics",
+        prometheus_enabled=prometheus_enabled,
+    )
     router.add_get("/metrics", serve_metrics)
