@@ -278,10 +278,19 @@ The following metrics are provided:
 | `git_cdn_cache_miss_bytes_sent` | Summary | Summary of total data served that was not found in the pack cache, in bytes |
 | `git_cdn_nocache_bytes_sent` | Summary | Summary of total data served across all requests other than cacheable /git-upload-pack requests, in bytes |
 | `git_cdn_stats_write_seconds` | Summary | Summary of time spent writing metrics, in seconds |
-| `git_cdn_pack_cache_evicted_bytes` | Summary of pack cache evictions, in bytes |
-| `git_cdn_repo_cache_received_bytes` | Summary of total data received from the upstream to populate the repo cache, in bytes |
+| `git_cdn_pack_cache_evicted_bytes` | Summary | Summary of pack cache evictions, in bytes |
+| `git_cdn_repo_cache_received_bytes` | Summary | Summary of total data received from the upstream to populate the repo cache, in bytes |
 
 When running git_cdn with gunicorn or any other multi-process Python webserver driver, the `PROMETHEUS_MULTIPROC_DIR` environment variable must be set to a valid directory. Metrics are communicated between separate workers using this filesystem, allowing for consistent metric reporting across multiple worker threads. The contents of this directory will be removed whenever the git_cdn server is started.
+
+## Grafana dashboard
+
+The easiest way to visualize the above Prometheus metrics is by using [Grafana, an open-source visualization and dashboarding platform](https://grafana.com/oss/).
+
+- To build up time series metrics, a Prometheus instance must be set up to periodically scrape the git_cdn deployments for metrics. See the [Prometheus getting started documentation](https://prometheus.io/docs/prometheus/latest/installation/) for more information about setting up Prometheus.
+- Follow the getting started documentation to set up a local Grafana instance or a hosted dashboard in Grafana cloud: https://grafana.com/docs/grafana/latest/getting-started/
+- [Configure a Prometheus data source in your Grafana instance](https://grafana.com/docs/grafana/latest/datasources/prometheus/configure-prometheus-data-source/) to make the Prometheus metrics available for use in dashboards.
+- Use the "+" button in Grafana to import a dashboard. Use the "Upload dashboard JSON file" option to import [the example dashboard contained in this repository](./doc/grafana/dashboards/GitCDN-Cache-Performance.json), or simply copy-paste the contents of the dashboard JSON into the "Import via dashboard JSON model" field. Choose a name and ID for the dashboard, and select your Prometheus data source.
 
 
 # Setup for development:
