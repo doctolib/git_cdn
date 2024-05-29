@@ -13,6 +13,9 @@ from structlog.contextvars import bind_contextvars
 
 from git_cdn.lock.aio_lock import lock
 from git_cdn.lock.file_lock import FileLock
+from git_cdn.metrics import metric_pack_cache_evicted_bytes
+from git_cdn.metrics import metric_pack_cache_used_bytes
+from git_cdn.metrics import metric_pack_sent_bytes
 from git_cdn.packet_line import PacketLineChunkParser
 from git_cdn.util import get_subdir
 
@@ -83,6 +86,7 @@ class PackCache:
                         break
                     try:
                         await writer.write(data)
+                        metric_pack_sent_bytes.labels(status).inc(len(data))
                     except ConnectionResetError:
                         log.warning("connection reset while serving pack cache")
                         break
@@ -152,6 +156,7 @@ class PackCacheCleaner:
             max_size=self.max_size,
             n_entry=len(all_files),
         )
+        metric_pack_cache_used_bytes.set(total_size)
 
         if total_size < self.max_size:
             return 0
@@ -177,9 +182,12 @@ class PackCacheCleaner:
             cache_duration=cache_duration.total_seconds(),
         )
         for f in to_delete:
+            f_size = f.stat().st_size
             with FileLock(f.path) as flock:
-                log.debug("delete", hash=f.name, rm_size=f.stat().st_size)
+                log.debug("delete", hash=f.name, rm_size=f_size)
                 flock.delete()
+            metric_pack_cache_evicted_bytes.observe(f_size)
+            metric_pack_cache_used_bytes.set(total_size - rm_size)
         return len(to_delete)
 
     def clean_task(self):
