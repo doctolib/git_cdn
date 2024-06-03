@@ -38,7 +38,7 @@ from git_cdn.metrics import metric_stats_write_seconds
 from git_cdn.metrics import metric_total_bytes_sent
 from git_cdn.metrics import metric_workdir_filesystem_avail_bytes
 from git_cdn.metrics import metric_workdir_filesystem_size_bytes
-from git_cdn.metrics import setup_metrics_routes
+from git_cdn.metrics import serve_metrics
 from git_cdn.upload_pack import UploadPackHandler
 from git_cdn.upload_pack_input_parser import UploadPackInputParser
 from git_cdn.upload_pack_input_parser_v2 import UploadPackInputParserV2
@@ -179,7 +179,7 @@ class GitCDN:
         self.router = router
         self.upstream = self.app.upstream = upstream
         self.router.add_get("/", self.handle_liveness)
-        setup_metrics_routes(self.router)
+        self.router.add_get("/metrics", serve_metrics)
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None

@@ -34,6 +34,12 @@ def app(tmpworkdir):
     yield git_cdn_app.make_app(GITSERVER_UPSTREAM)
 
 
+@pytest_asyncio.fixture
+def app_with_metrics(monkeypatch, tmpworkdir):
+    monkeypatch.setenv("PROMETHEUS_ENABLED", "true")
+    yield git_cdn_app.make_app(GITSERVER_UPSTREAM)
+
+
 @pytest_asyncio.fixture(scope="module", params=[asyncio, uvloop])
 def cdn_event_loop(request):
     if request.param is asyncio:
