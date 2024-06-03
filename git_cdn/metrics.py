@@ -3,7 +3,6 @@ import socket
 from typing import Callable
 
 from aiohttp import web
-from aiohttp.abc import AbstractRouter
 from prometheus_client import CONTENT_TYPE_LATEST
 from prometheus_client import REGISTRY
 from prometheus_client import CollectorRegistry
@@ -120,6 +119,9 @@ def choose_generator(accept_header: str) -> tuple[Callable, str]:
 
 
 async def serve_metrics(request: web.Request) -> web.Response:
+    if not os.getenv("PROMETHEUS_ENABLED", "false").lower() == "true":
+        return web.Response(text="prometheus not enabled", status=404)
+
     # Ref: https://prometheus.github.io/client_python/multiprocess/
     # no coverage, (tests run with single-threaded collector)
     if "PROMETHEUS_MULTIPROC_DIR" in os.environ:  # pragma: no cover
@@ -142,18 +144,3 @@ async def serve_metrics(request: web.Request) -> web.Response:
     # cf. https://github.com/aio-libs/aiohttp/issues/2197
     response.content_type = content_type
     return response
-
-
-def setup_metrics_routes(router: AbstractRouter):
-    prometheus_enabled = os.getenv("PROMETHEUS_ENABLED")
-    if not prometheus_enabled or prometheus_enabled.lower() == "false":
-        log.info(
-            "Prometheus metrics not enabled",
-            prometheus_enabled=prometheus_enabled,
-        )
-        return
-    log.info(
-        "Prometheus metrics being served at /metrics",
-        prometheus_enabled=prometheus_enabled,
-    )
-    router.add_get("/metrics", serve_metrics)
