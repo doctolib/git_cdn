@@ -68,6 +68,8 @@ class UploadPackHandler:
         self.writer = writer
         self.rcache = None
         self.pcache = None
+        self.pcache_hit = False
+        self.rcache_hit = False
         self.protocol_version = protocol_version
 
     async def _do_upload_pack(self, data):
@@ -133,6 +135,7 @@ class UploadPackHandler:
         self.pcache = PackCache(parsed_input.hash)
         async with self.pcache.read_lock():
             if self.pcache.exists():
+                self.pcache_hit = True
                 await self.pcache.send_pack(self.writer)
                 return
 

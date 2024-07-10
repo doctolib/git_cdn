@@ -39,11 +39,18 @@ RUN apk add --update --no-cache --virtual \
     python -m pip install --constraint requirements.txt /app/git_cdn-*.whl && \
     apk del .build-deps
 
+
+# Expose prometheus metrics
+ENV PROMETHEUS_ENABLED=true
+ENV PROMETHEUS_MULTIPROC_DIR=/gitcdn_metrics_registry
+
 # Configure git for git-cdn
 RUN git config --global pack.threads 4  &&\
     git config --global http.postBuffer 524288000 && \
     # Allow git clone/fetch --filter
-    git config --global uploadpack.allowfilter true
+    git config --global uploadpack.allowfilter true && \
+    # Ensure Prometheus collector storage is writeable
+    mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
 
 ADD config.py /app/
 

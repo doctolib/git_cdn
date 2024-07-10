@@ -3,6 +3,7 @@ import asyncio
 import base64
 import os
 import re
+import shutil
 import urllib
 from asyncio.subprocess import Process
 from importlib.metadata import PackageNotFoundError
@@ -167,3 +168,52 @@ def object_module_name(o):
         fn = o.__module__ + "."
     fn += o.__class__.__name__
     return fn
+
+
+def remove_git_credentials(args):
+    args_without_credentials = []
+    for e in args:
+        if re.match(
+            r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?",
+            str(e),
+        ):
+            args_without_credentials.append(
+                re.sub("(?<=:)([^@:]+)(?=@[^@]+$)", "*****", str(e))
+            )
+        else:
+            args_without_credentials.append(str(e))
+    return args_without_credentials
+
+
+def setup_prometheus_multiproc_dir():
+    """Create an empty directory for multi-process prometheus collector storage.
+
+    This must be called before gunicorn/app startup.
+    See https://prometheus.github.io/client_python/multiprocess/
+    """
+    prom_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR")
+    if not prom_multiproc_dir:
+        log.debug(
+            "PROMETHEUS_MULTIPROC_DIR is not set. Prometheus metrics will "
+            "run in single-process mode only."
+        )
+        return
+    log.debug(f"Clearing contents of CollectorRegistry at {prom_multiproc_dir}")
+    if os.path.isfile(prom_multiproc_dir):
+        log.debug(
+            f"PROMETHEUS_MULTIPROC_DIR value '{prom_multiproc_dir}' is a file. "
+            "Deleting and creating a directory"
+        )
+        os.remove(prom_multiproc_dir)
+    if os.path.isdir(prom_multiproc_dir):
+        for node in os.listdir(prom_multiproc_dir):
+            try:
+                path = os.path.join(prom_multiproc_dir, node)
+                if os.path.isfile(path) or os.path.islink(path):
+                    os.unlink(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+    else:
+        os.makedirs(prom_multiproc_dir, exist_ok=True)

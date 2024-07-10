@@ -1,6 +1,7 @@
 # Standard Library
 import ast
 import logging
+import os
 import socket
 import sys
 import traceback
@@ -21,6 +22,7 @@ from git_cdn.util import object_module_name
 
 g_version = "unknown"
 g_host = socket.gethostname()
+g_instance = os.getenv("INSTANCE_NAME", "git-cdn")
 
 # pylint: disable=unused-argument
 
@@ -99,6 +101,7 @@ class UdpJsonHandler(DatagramHandler):
             "facility": record.name,
             "function": record.funcName,
             "host": g_host,
+            "instance": g_instance,
             "levelname": record.levelname.lower(),
             "line": record.lineno,
             "pid": record.process,

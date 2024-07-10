@@ -18,6 +18,9 @@ GITLAB_REPO_TEST_GROUP = os.getenv("GITLAB_REPO_TEST_GROUP", "grouperenault/repo
 GITSERVER_UPSTREAM = os.getenv("GITSERVER_UPSTREAM", "https://gitlab.com/")
 MANIFEST_PATH = f"{GITLAB_REPO_TEST_GROUP}/test_git_cdn.git"
 CREDS = os.getenv("CREDS", "gitlab-ci-token:{}".format(os.getenv("CI_JOB_TOKEN")))
+# For consistency, pytest should not share prometheus metrics across processes
+if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+    del os.environ["PROMETHEUS_MULTIPROC_DIR"]
 
 
 @pytest_asyncio.fixture
@@ -28,6 +31,12 @@ def tmpworkdir(tmpdir):
 
 @pytest_asyncio.fixture
 def app(tmpworkdir):
+    yield git_cdn_app.make_app(GITSERVER_UPSTREAM)
+
+
+@pytest_asyncio.fixture
+def app_with_metrics(monkeypatch, tmpworkdir):
+    monkeypatch.setenv("PROMETHEUS_ENABLED", "true")
     yield git_cdn_app.make_app(GITSERVER_UPSTREAM)
 
 

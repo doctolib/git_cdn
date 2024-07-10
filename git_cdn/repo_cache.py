@@ -1,6 +1,7 @@
 import asyncio
 import fcntl
 import os
+import re
 import time
 from concurrent.futures import CancelledError
 
@@ -10,12 +11,14 @@ from structlog import getLogger
 
 from git_cdn.lock.aio_lock import lock
 from git_cdn.log import bind_context_from_exp
+from git_cdn.metrics import metric_repo_cache_received_bytes
 from git_cdn.util import GIT_PROCESS_WAIT_TIMEOUT
 from git_cdn.util import backoff
 from git_cdn.util import ensure_proc_terminated
 from git_cdn.util import generate_url
 from git_cdn.util import get_bundle_paths
 from git_cdn.util import get_subdir
+from git_cdn.util import remove_git_credentials
 
 log = getLogger()
 BACKOFF_START = float(os.getenv("BACKOFF_START", "0.5"))
@@ -30,6 +33,33 @@ async def exec_git(*args):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+
+
+def parse_git_output(stderr: bytes):
+    # Try to determine how many bytes were transferred in the process
+    si_units = {
+        "TiB": 2**40,
+        "GiB": 2**30,
+        "MiB": 2**20,
+        "KiB": 2**10,
+    }
+    receive_done_regex = re.compile(
+        "Receiving objects: [0-9]+\\% \\([0-9]+\\/[0-9]+\\), "
+        "([0-9\\.]+) ([KMG]iB) \\| [0-9\\.]+ [KMG]iB\\/s, done."
+    )
+    stderr_lines = re.split("\n|\r", stderr.decode())
+    receive_done_lines = list(filter(receive_done_regex.match, stderr_lines))
+    if not receive_done_lines:
+        log.debug("Git command did not receive any bytes from the upstream remote")
+        return
+    receive_bytes = 0
+    for line in receive_done_lines:
+        (receive_amount, receive_units) = receive_done_regex.search(line).groups()
+        for unit, conversion in si_units.items():
+            if receive_units == unit:
+                receive_bytes += float(receive_amount) * conversion
+    log.debug("Git command fetched data from upstream", receive_bytes=receive_bytes)
+    metric_repo_cache_received_bytes.observe(receive_bytes)
 
 
 class RepoCache:
@@ -63,8 +93,8 @@ class RepoCache:
         return stdout, stderr, returncode  via deferred
         """
         t1 = time.time()
-
-        log.debug("git_cmd start", cmd=args)
+        args_without_pii = remove_git_credentials(args)
+        log.debug("git_cmd start", cmd=args_without_pii)
         stdout_data = b""
         stderr_data = b""
         try:
@@ -90,10 +120,11 @@ class RepoCache:
             )
             if b"HTTP Basic: Access denied" in stderr_data:
                 raise HTTPUnauthorized(reason=stderr_data)
+            parse_git_output(stderr_data)
 
             log.debug(
                 "git_cmd done",
-                cmd=args,
+                cmd=args_without_pii,
                 stdout_data=stdout_data.decode(errors="replace")[:128],
                 stderr_data=stderr_data.decode(errors="replace")[:128],
                 rc=git_proc.returncode,

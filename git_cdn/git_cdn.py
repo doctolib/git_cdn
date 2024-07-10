@@ -30,11 +30,23 @@ from git_cdn.log import enable_console_logs
 from git_cdn.log import enable_udp_logs
 from git_cdn.auth_cache import AuthCache
 from git_cdn.repo_cache import RepoCache
+from git_cdn.metrics import metric_cache_hit_bytes_sent
+from git_cdn.metrics import metric_cache_miss_bytes_sent
+from git_cdn.metrics import metric_nocache_bytes_sent
+from git_cdn.metrics import metric_request_time_seconds
+from git_cdn.metrics import metric_requests_total
+from git_cdn.metrics import metric_response_status_total
+from git_cdn.metrics import metric_stats_write_seconds
+from git_cdn.metrics import metric_total_bytes_sent
+from git_cdn.metrics import metric_workdir_filesystem_avail_bytes
+from git_cdn.metrics import metric_workdir_filesystem_size_bytes
+from git_cdn.metrics import serve_metrics
 from git_cdn.upload_pack import UploadPackHandler
 from git_cdn.upload_pack_input_parser import UploadPackInputParser
 from git_cdn.upload_pack_input_parser_v2 import UploadPackInputParserV2
 from git_cdn.util import GITCDN_VERSION
 from git_cdn.util import GITLFS_OBJECT_RE
+from git_cdn.util import WORKDIR
 from git_cdn.util import find_gitpath
 from git_cdn.util import get_url_creds_from_auth
 from git_cdn.util import object_module_name
@@ -176,6 +188,7 @@ class GitCDN:
         self.router.add_get("/__api__/diff", self.handle_api_diff)
         self.router.add_get("/__api__/diff_no_renames", self.handle_api_diff_no_renames)
         self.auth_cache = AuthCache()
+        self.router.add_get("/metrics", serve_metrics)
         self.router.add_resource("/{path:.+}").add_route("*", self.routing_handler)
         self.proxysession = None
         self.lfs_manager = None
@@ -555,6 +568,9 @@ class GitCDN:
                 protocol_version=protocol_version,
             )
             await proc.run(parsed_content)
+            response.headers["X-GitCDN-Cache-Status"] = (
+                "HIT" if (proc.pcache_hit or proc.rcache_hit) else "MISS"
+            )
         except Exception:
             bind_contextvars(upload_pack_status="exception")
             raise
@@ -568,7 +584,9 @@ class GitCDN:
                 return 0
         return 0
 
+    @metric_stats_write_seconds.time()
     def stats(self, response: Union[Exception, web.Response] = None):
+        metric_requests_total.inc()
         response_stats = {}
         if isinstance(response, (web.Response, web.StreamResponse)):
             output_size = 0
@@ -578,15 +596,38 @@ class GitCDN:
                 # pylint: enable = protected-access
             if not output_size:
                 output_size = response.content_length
+
+            response_status = getattr(response, "status", 500)
             response_stats = {
                 "response_size": output_size,
-                "response_status": getattr(response, "status", 500),
+                "response_status": response_status,
             }
+            metric_response_status_total.labels(str(response_status)).inc()
+            metric_total_bytes_sent.observe(output_size)
+            if (
+                getattr(response, "headers")
+                and "X-GitCDN-Cache-Status" in response.headers
+            ):
+                if response.headers["X-GitCDN-Cache-Status"] == "HIT":
+                    metric_cache_hit_bytes_sent.observe(output_size)
+                if response.headers["X-GitCDN-Cache-Status"] == "MISS":
+                    metric_cache_miss_bytes_sent.observe(output_size)
+            else:
+                metric_nocache_bytes_sent.observe(output_size)
+        resp_time = time.time() - self.start_time
+        metric_request_time_seconds.observe(resp_time)
+        disk_stat = os.statvfs(WORKDIR)
+        metric_workdir_filesystem_avail_bytes.set(
+            disk_stat.f_frsize * disk_stat.f_bavail
+        )
+        metric_workdir_filesystem_size_bytes.set(
+            disk_stat.f_frsize * disk_stat.f_blocks
+        )
 
         log.info(
             "Response stats",
             **response_stats,
-            resp_time=time.time() - self.start_time,
+            resp_time=resp_time,
             sema_count=self.get_sema_count(),
         )
         return response

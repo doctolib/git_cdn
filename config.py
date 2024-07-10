@@ -3,7 +3,10 @@ import asyncio
 import logging
 import os
 
+from prometheus_client import multiprocess
+
 from git_cdn.git_cdn import GUNICORN_WORKER_NB
+from git_cdn.util import setup_prometheus_multiproc_dir
 
 # pylint: disable=unused-argument,protected-access
 
@@ -40,6 +43,18 @@ log.setLevel(logging.DEBUG)
 asyncio.set_child_watcher(asyncio.FastChildWatcher())
 
 
+# Ensure a clean collector registry directory is available for prometheus metrics when
+# the server starts
+# https://prometheus.github.io/client_python/multiprocess/
+def on_starting(_server):
+    if not os.getenv("PROMETHEUS_ENABLED"):
+        log.debug(
+            "Not starting multiprocess prometheus collector registry: PROMETHEUS_ENABLED is not set"
+        )
+        return
+    setup_prometheus_multiproc_dir()
+
+
 # Add logs when workers are killed
 def worker_int(worker):
     log.error("worker received INT or QUIT signal")
@@ -70,4 +85,6 @@ def worker_exit(server, worker):
 
 
 def child_exit(server, worker):
+    if os.getenv("PROMETHEUS_ENABLED"):
+        multiprocess.mark_process_dead(worker.pid)
     log.warning("Child Worker exiting")
