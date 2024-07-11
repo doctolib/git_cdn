@@ -1,7 +1,7 @@
-FROM python:3.10-alpine as base
+FROM python:3.10-alpine AS base
 WORKDIR     /app
 
-FROM base as builder
+FROM base AS builder
 
 RUN apk add --update --no-cache \
         alpine-sdk \
